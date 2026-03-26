@@ -40,7 +40,7 @@ debug:: fclean $(NAME)
 clean:
 	$(RM) $(OBJS)
 fclean: clean
-	$(RM) $()
+	$(RM) $(LIBRARY_NAME).so
 	$(RM) $(BUILD_DIR)
 
 re: fclean all
