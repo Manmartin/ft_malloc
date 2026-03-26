@@ -23,8 +23,8 @@ typedef enum
 
 typedef struct alloc_s
 {
-    bool      free : 1;
     AllocType type : 2;
+    bool      free : 1;
 
     size_t          size;
     struct alloc_s *past;
@@ -65,17 +65,17 @@ void *malloc(size_t size)
             return NULL;
         }
 
-        header.tiny_allocs->free = true;
         header.tiny_allocs->type = TINY;
+        header.tiny_allocs->free = true;
+        header.tiny_allocs->size = tiny_zone_size - sizeof(alloc_t);
         header.tiny_allocs->past = NULL;
         header.tiny_allocs->next = NULL;
-        header.tiny_allocs->size = tiny_zone_size - sizeof(alloc_t);
 
-        header.small_allocs->free = true;
         header.small_allocs->type = SMALL;
+        header.small_allocs->free = true;
+        header.small_allocs->size = small_zone_size - sizeof(alloc_t);
         header.small_allocs->past = NULL;
         header.small_allocs->next = NULL;
-        header.small_allocs->size = small_zone_size - sizeof(alloc_t);
     }
 
     alloc_t *alloc;
@@ -84,40 +84,36 @@ void *malloc(size_t size)
     else if (size <= SMALL_ALLOC_SIZE)
         alloc = header.small_allocs;
     else
-        return NULL;
+    {
+        size_t   ptr_size = ALIGN(size + sizeof(alloc_t), sysconf(_SC_PAGESIZE));
+        alloc_t *ptr      = mmap(NULL, ptr_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (ptr == NULL)
+            return NULL;
+        ptr->type = LARGE;
+        ptr->free = false;
+        ptr->size = size;
+        return ptr->data;
+    }
 
     size_t aligned_size = ALIGN(size, ALIGNMENT);
-
     while ((!alloc->free || (alloc->size != aligned_size && alloc->size < aligned_size + sizeof(alloc_t))) &&
            alloc->next != NULL)
         alloc = alloc->next;
 
     alloc_t *next_alloc;
-    if (alloc->next == NULL)
-    {
-        // End of allocated memory. TODO: Request more memory for the new allocation;
-        if (alloc->size < aligned_size + sizeof(alloc_t))
-            return NULL;
-
-        next_alloc       = (alloc_t *)((char *)alloc + sizeof(alloc_t) + aligned_size);
-        next_alloc->past = alloc;
-        next_alloc->next = NULL;
-
-        next_alloc->size = alloc->size - aligned_size - sizeof(alloc_t);
-        next_alloc->free = true;
-        next_alloc->type = alloc->type;
-
-        alloc->next = next_alloc;
-    }
+    // End of allocated memory. TODO: Request more memory for the new allocation;
+    if (alloc->next == NULL && alloc->size < aligned_size + sizeof(alloc_t))
+        return NULL;
     else if (alloc->size >= aligned_size + sizeof(alloc_t))
     {
-        next_alloc       = (alloc_t *)((char *)alloc + sizeof(alloc_t) + aligned_size);
+        next_alloc = (alloc_t *)((char *)alloc + sizeof(alloc_t) + aligned_size);
+
+        next_alloc->type = alloc->type;
+        next_alloc->free = true;
+        next_alloc->size = alloc->size - aligned_size - sizeof(alloc_t);
+
         next_alloc->past = alloc;
         next_alloc->next = alloc->next;
-
-        next_alloc->size = alloc->size - aligned_size - sizeof(alloc_t);
-        next_alloc->free = true;
-        next_alloc->type = alloc->type;
 
         alloc->next = next_alloc;
     }
@@ -142,6 +138,12 @@ void free(void *ptr)
 
     alloc_t *alloc = ((alloc_t *)ptr - 1);
     alloc->free    = true;
+    if (alloc->type == LARGE)
+    {
+        size_t ptr_size = ALIGN(alloc->size + sizeof(alloc_t), sysconf(_SC_PAGESIZE));
+        munmap(alloc, ptr_size);
+        return;
+    }
 
     // Get real size of free block
     alloc->size = ALIGN(alloc->size, ALIGNMENT);
