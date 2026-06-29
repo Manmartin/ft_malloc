@@ -15,8 +15,14 @@
 #define LARGE_ALLOC_NUMBER 100
 
 #ifdef MALLOC_DEBUG
-# include <string.h>
-# define log(s) write(2, s, strlen(s));
+static size_t ft_strlen(const char *s)
+{
+    size_t i = 0;
+    while (s[i] != '\0')
+        ++i;
+    return i;
+}
+# define log(s) write(2, s, ft_strlen(s));
 #else
 # define log(s)
 #endif
@@ -177,7 +183,7 @@ void *malloc(size_t size)
 
 void *realloc(void *ptr, size_t size)
 {
-    log("realloc");
+    log("realloc\n");
     if (ptr == NULL)
         return malloc(size);
     return NULL;
@@ -185,7 +191,7 @@ void *realloc(void *ptr, size_t size)
 
 void free(void *ptr)
 {
-    log("free");
+    log("free\n");
     if (ptr == NULL)
         return;
 
@@ -272,7 +278,6 @@ static void print_alloc(void *origin, size_t size)
     write(1, " bytes\n", 7);
 }
 
-#include <stdio.h>
 
 void show_alloc_mem(void)
 {
