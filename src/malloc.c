@@ -260,8 +260,9 @@ static void put_nbr(size_t n)
     char buffer[20];
     size_t digits = count_digits(n, 10);
 
-    for (size_t i = digits - 1; n != 0; n /= 10)
+    for (size_t i = digits - 1; n >= 10; n /= 10)
         buffer[i--] = '0' + (n % 10);
+    buffer[0] = '0' + (n % 10);
 
     write(1, buffer, digits);
 }
@@ -281,8 +282,13 @@ static void print_alloc(void *origin, size_t size)
 
 void show_alloc_mem(void)
 {
-    if (header.tiny_allocs == NULL)
-        return;
+    if (header.tiny_allocs == NULL || header.small_allocs == NULL || header.large_allocs == NULL) {
+    	write(1, "Total : ", 8);
+    	put_nbr(0);
+    	write(1, " bytes\n", 7);
+	return;
+    }
+
 
     size_t total_size = 0;
 
