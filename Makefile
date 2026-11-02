@@ -29,14 +29,14 @@ $(BUILD_DIR)/%.o: %.c
 
 $(NAME): $(OBJS)
 	$(CC) $(CFLAGS) -shared -o $@ $(OBJS)
-	@rm -rf $(LIBRARY_NAME).so
-	ln -s $(NAME) $(LIBRARY_NAME).so
+	ln -sf $(NAME) $(LIBRARY_NAME).so
 
-# LD_LIBRARY_PATH=./ ./test
+LIBRARY_PATH= "${LD_LIBRARY_PATH}"
 test: $(NAME)
-	$(CC) $(CFLAGS) -o $@ main.c $(LDFLAGS)
+	$(CC) $(CFLAGS) tests/main.c -o $@ -L. -lft_malloc
+	LD_LIBRARY_PATH="$(shell pwd)" ./$@
 
-debug:: CFLAGS += -g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize=bounds -fsanitize=null
+debug:: CFLAGS += -g3 -DMALLOC_DEBUG #-fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize=bounds -fsanitize=null
 debug:: fclean $(NAME)
 
 clean:
@@ -49,4 +49,4 @@ fclean: clean
 
 re: fclean all
 
-.PHONY: all sanitize clean fclean re
+.PHONY: test debug all sanitize clean fclean re

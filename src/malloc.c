@@ -301,6 +301,7 @@ static void put_nbr(size_t n)
     buffer[0] = '0';
     for (size_t i = digits - 1; n != 0; n /= 10)
         buffer[i--] = '0' + (n % 10);
+    buffer[0] = '0' + (n % 10);
 
     write(1, buffer, digits);
 }
