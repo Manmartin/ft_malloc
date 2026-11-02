@@ -1,4 +1,5 @@
 LIBRARY_NAME := libft_malloc
+LINK_NAME := ft_malloc
 
 ifeq ($(HOSTTYPE),)
 	HOSTTYPE := $(shell uname -m)_$(shell uname -s)
@@ -12,7 +13,7 @@ RM = rm -rf
 CC = gcc
 CFLAGS = -Wall -Wextra -Werror -pedantic -std=gnu11
 
-LDFLAGS =
+LDFLAGS = -L. -l$(LINK_NAME)
 
 BUILD_DIR := build
 SRC_DIR := src
@@ -31,14 +32,17 @@ $(NAME): $(OBJS)
 	@rm -rf $(LIBRARY_NAME).so
 	ln -s $(NAME) $(LIBRARY_NAME).so
 
-test:
-	$(CC) $(CFLAGS) main.c
+# LD_LIBRARY_PATH=./ ./test
+test: $(NAME)
+	$(CC) $(CFLAGS) -o $@ main.c $(LDFLAGS)
 
 debug:: CFLAGS += -g3 -fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize=bounds -fsanitize=null
 debug:: fclean $(NAME)
 
 clean:
 	$(RM) $(OBJS)
+	$(RM) test
+
 fclean: clean
 	$(RM) $(LIBRARY_NAME).so
 	$(RM) $(BUILD_DIR)
