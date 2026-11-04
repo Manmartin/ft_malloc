@@ -32,7 +32,7 @@ typedef struct alloc_s
 {
     AllocType type : 2;
     bool      free : 1;
-    unsigned  extra_space : 5;
+    bool      original : 1; // Only true in the first header of the original zones. Prevent deletion on free
 
     size_t size;
     // ptr and header are used for large allocations
@@ -73,7 +73,7 @@ static bool init_headers()
 
     headers.tiny_allocs  = mmap(NULL, tiny_zone_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     headers.small_allocs = mmap(NULL, small_zone_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    headers.large_allocs = mmap(NULL, small_zone_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    headers.large_allocs = mmap(NULL, large_zone_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (headers.tiny_allocs == NULL || headers.small_allocs == NULL || headers.large_allocs == NULL)
     {
         if (headers.tiny_allocs != NULL)
@@ -85,17 +85,20 @@ static bool init_headers()
         return false;
     }
 
-    headers.tiny_allocs->type = TINY;
-    headers.tiny_allocs->free = true;
-    headers.tiny_allocs->size = tiny_zone_size - sizeof(alloc_t);
+    headers.tiny_allocs->type     = TINY;
+    headers.tiny_allocs->free     = true;
+    headers.tiny_allocs->original = true;
+    headers.tiny_allocs->size     = tiny_zone_size - sizeof(alloc_t);
 
-    headers.small_allocs->type = SMALL;
-    headers.small_allocs->free = true;
-    headers.small_allocs->size = small_zone_size - sizeof(alloc_t);
+    headers.small_allocs->type     = SMALL;
+    headers.small_allocs->free     = true;
+    headers.small_allocs->original = true;
+    headers.small_allocs->size     = small_zone_size - sizeof(alloc_t);
 
-    headers.large_allocs->type = LARGE;
-    headers.large_allocs->free = true;
-    headers.large_allocs->size = large_zone_size - sizeof(alloc_t);
+    headers.large_allocs->type     = LARGE;
+    headers.large_allocs->free     = true;
+    headers.large_allocs->original = true;
+    headers.large_allocs->size     = large_zone_size - sizeof(alloc_t);
     return true;
 }
 
@@ -106,10 +109,20 @@ static void *alloc_large(size_t size)
     while (header->next != NULL && !header->free)
         header = header->next;
 
-    // End of allocated memory. TODO: Request more memory for the new
-    // allocation;
+    // End of allocated memory
     if (header->next == NULL && header->size < sizeof(alloc_t))
-        return NULL;
+    {
+        size_t page_size       = sysconf(_SC_PAGESIZE);
+        size_t large_zone_size = ALIGN(LARGE_ALLOC_NUMBER * sizeof(alloc_t), page_size);
+        header->next = mmap(NULL, large_zone_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (header->next == NULL)
+            return NULL;
+        header = header->next;
+
+        header->type = LARGE;
+        header->free = true;
+        header->size = large_zone_size - sizeof(alloc_t);
+    }
 
     size_t   alloc_size = ALIGN(size + sizeof(alloc_t), sysconf(_SC_PAGESIZE));
     alloc_t *alloc      = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -126,14 +139,13 @@ static void *alloc_large(size_t size)
     alloc->header        = header;
     if (header->next == NULL)
     {
-        header->next = header + 1;
-        header->size = 0;
-
+        header->next       = header + 1;
         header->next->type = LARGE;
         header->next->free = true;
         header->next->size = header->size - sizeof(alloc_t);
         header->next->next = NULL;
         header->next->ptr  = NULL;
+        header->size       = 0;
     }
     return alloc->data;
 }
@@ -299,7 +311,7 @@ static void put_nbr(size_t n)
     size_t digits = count_digits(n, 10);
 
     buffer[0] = '0';
-    for (size_t i = digits - 1; n != 0; n /= 10)
+    for (size_t i = digits - 1; n >= 10; n /= 10)
         buffer[i--] = '0' + (n % 10);
     buffer[0] = '0' + (n % 10);
 
